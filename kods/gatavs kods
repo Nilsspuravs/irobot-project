@@ -1,1 +1,169 @@
+#include <SoftwareSerial.h> // Librarijss ko izmantoju
+#include <roombaDefines.h>  // Librarijss ko izmantoju
+#include <Servo.h>          // Var izmantot, bet labak nevajag
+int rxPin = 4;              rx to tx pins priek dim konektora
+int txPin = 3;               tx to rx pins priek dim konektora
+int servoPin = 2;            // nav butisks
+const int IRpin[3] = {5, 6}; // sensori Kreisasi, labais
 
+SoftwareSerial Roomba(rxPin, txPin); //Definejam pinus
+float distance[2]; //abi sensori
+void setup() { 
+  Roomba.begin(19200); // Baitu frekvence kura sutam un sanem datus
+  Serial.begin (19200); // Prieks seriala porta
+  pinMode(ddPin, OUTPUT);
+  Serial.println("Uzbruku");
+  wakeUp();   // Wake-up Roomba
+  startFull();
+  setDebrisLED(ON);
+delay(2000);
+  driveWheels(-500,500);
+  delay(500);
+  driveStop();
+  delay(500);
+ 
+ 
+}
+void wakeUp(void) // Pamodinam robotu
+
+{
+
+  digitalWrite(ddPin, HIGH);
+  delay(100);
+  digitalWrite(ddPin, LOW);
+  delay(500);
+  digitalWrite(ddPin, HIGH);
+  delay(100);
+}
+//Uzstādam, ka arduino nosūta datu paku, lai irobots pamostos drošā režīmā
+void startSafe()
+
+{
+  Roomba.write(128);  //Start
+  Roomba.write(131);  //Safe mode
+  delay(900);
+}
+
+void startFull()
+
+{
+  Roomba.write(128);  //Start
+  Roomba.write(132);  //Safe mode
+  delay(900);
+
+}
+void readSens() // lasam sensorus un rekinam attalumu
+{
+  float sum[3] = {0, 0, 0};
+  float volts[3] = {0, 0, 0};
+
+  for (int a = 0; a < 3; a++) {
+    for (int i = 0; i < 16; i++) // for smoothing error values
+    {
+      sum[a] += analogRead(IRpin[a]); //lasam analog pin
+    }
+    volts[a] = sum[a] / 16  * 0.00488282;       // value from sensor * (5/1024) - if running 3.3.volts then change 5 to 3.3
+    distance[a] = 65 * pow(volts[a], -1.10);  // worked out from graph 65 = theretical distance / (1/Volts)S - luckylarry.co.uk
+  }
+}
+
+void setDebrisLED(bool enable) //robota diodes ieslegsana
+{
+  debrisLED = enable;
+  Roomba.write(139);
+  Roomba.write((debrisLED ? 1 : 0) + (spotLED ? 2 : 0) + (dockLED ? 4 : 0) + (warningLED ? 8 : 0));
+  Roomba.write((byte)color);
+  Roomba.write((byte)intensity);
+}
+
+
+//MOTORI
+void drive(int velocity, int radius)
+{
+  clamp(velocity, -500, 500); //def max and min velocity in mm/s
+  clamp(radius, -2000, 2000); //def max and min radius in mm
+  Roomba.write(137);
+  Roomba.write(velocity >> 8);
+  Roomba.write(velocity);
+  Roomba.write(radius >> 8);
+  Roomba.write(radius);
+}
+
+void driveWheels(int right, int left)
+
+{
+  clamp(right, -500, 500);
+  clamp(left, -500, 500);
+  Roomba.write(145);
+  Roomba.write(right >> 8);
+  Roomba.write(right);
+  Roomba.write(left >> 8);
+  Roomba.write(left);
+}
+
+void driveWheelsPWM(int rightPWM, int leftPWM)
+{
+  clamp(rightPWM, -255, 255);
+  clamp(leftPWM, -255, 255);
+  Roomba.write(146);
+  Roomba.write(rightPWM >> 8);
+  Roomba.write(rightPWM);
+  Roomba.write(leftPWM >> 8);
+  Roomba.write(leftPWM);
+}
+
+
+
+
+
+void driveStop(void)
+{
+  drive(0, 0);
+}
+
+
+void loop() {
+
+  readSens();
+
+  Serial.println(distance[0]);
+   Serial.println(distance[1]);
+
+
+
+  if (distance[0] < 80 && distance[1] < 80)
+  {
+    // abi sensori kaut ko redz  mauc tisni.
+    //driveStop();
+    driveWheels(-500, -500);
+    delay(10);
+Serial.println("abi<100");
+
+  }
+  else if (distance[0] > 80 && distance[1] < 80)
+  {
+    // uz vieu pusi
+    driveWheels(500, -150);
+    delay(10);
+    Serial.println("kreisais<100");
+  }
+  else if (distance[0] < 80 && distance[1] > 80)
+  {
+    // uz otru pusi
+    driveWheels(-150, 500);
+    delay(10);
+    Serial.println("labais<100");
+  }
+  else
+  {
+    driveWheels(-500, 200);
+    delay(10);
+    driveWheels(200, -500);
+    delay(10);
+    driveWheels(-500, 200);
+    delay(10);
+    driveWheels(-500, - 500);
+    delay(10);
+Serial.println("viss cits");
+  }
+}
